@@ -1,5 +1,7 @@
 # Two-Leg OAuth PKCE Consent Proxy — POC
 
+![Sequence diagram](double_auth_pkce_flow.svg)
+
 This directory contains a proof-of-concept demonstrating a two-leg OAuth 2.0
 authorization code + PKCE flow where a consent proxy (App B) intercepts the
 login flow, authenticates the user, runs consent logic, and then re-initiates
