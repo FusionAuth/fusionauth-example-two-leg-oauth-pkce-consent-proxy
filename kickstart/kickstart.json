@@ -23,7 +23,6 @@
     {
       "method": "POST",
       "url": "/api/key/generate/#{asymmetricKeyId}",
-      "tenantId": "#{defaultTenantId}",
       "body": {
         "key": {
           "algorithm": "RS256",
@@ -52,7 +51,9 @@
           "name": "ExampleNodeApp",
           "oauthConfiguration": {
             "authorizedRedirectURLs": [
-              "http://localhost:8080/oauth-redirect"
+              "http://localhost:8080/oauth-redirect",
+              "http://localhost:9998/stuff",
+              "http://localhost:9999/stuff"
             ],
             "logoutURL": "http://localhost:8080/oauth2/logout",
             "clientSecret": "#{clientSecret}",
