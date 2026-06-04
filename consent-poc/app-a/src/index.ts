@@ -26,7 +26,7 @@ const consentProxyURL = process.env.consentProxyURL!;
 
 // The redirect_uri that FusionAuth will send the browser to in Leg 2.
 // Must be registered in the FusionAuth application's authorizedRedirectURLs.
-const APP_A_REDIRECT_URI = 'http://localhost:9998/stuff';
+const APP_A_REDIRECT_URI = 'http://localhost:9998/cme';
 
 // ---------------------------------------------------------------------------
 // JWT validation
@@ -90,7 +90,7 @@ app.get('/login', async (req, res) => {
   const stateValue = crypto.randomUUID();
   const pkcePair   = await pkceChallenge();
 
-  // Persist verifier and state nonce in an httpOnly cookie so /stuff can use them.
+  // Persist verifier and state nonce in an httpOnly cookie so /cmd can use them.
   res.cookie(SESSION_COOKIE, {
     stateValue,
     verifier:  pkcePair.code_verifier,
@@ -114,16 +114,16 @@ app.get('/login', async (req, res) => {
 });
 
 // Leg 2 callback: FusionAuth redirects here after App B re-initiates the authorize
-// flow with App A's original PKCE challenge and redirect_uri=:9998/stuff.
+// flow with App A's original PKCE challenge and redirect_uri=:9998/cme.
 // App A exchanges the code using its own verifier (which never left this server).
-app.get('/stuff', async (req, res) => {
+app.get('/cme', async (req, res) => {
   const sessionCookie = req.cookies[SESSION_COOKIE];
   const returnedState = `${req.query.state}`;
   const authCode      = `${req.query.code}`;
 
   // Validate that the state nonce echoed by FusionAuth matches what we stored.
   if (!sessionCookie || returnedState !== sessionCookie.stateValue) {
-    console.error('State mismatch in /stuff', { returned: returnedState, stored: sessionCookie?.stateValue });
+    console.error('State mismatch in /cme', { returned: returnedState, stored: sessionCookie?.stateValue });
     return res.redirect(302, '/');
   }
 

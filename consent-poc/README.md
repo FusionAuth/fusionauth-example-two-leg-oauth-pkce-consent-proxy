@@ -1,7 +1,5 @@
 # Two-Leg OAuth PKCE Consent Proxy — POC
 
-![Sequence diagram](double_auth_pkce_flow.svg)
-
 This directory contains a proof-of-concept demonstrating a two-leg OAuth 2.0
 authorization code + PKCE flow where a consent proxy (App B) intercepts the
 login flow, authenticates the user, runs consent logic, and then re-initiates
@@ -32,8 +30,8 @@ The kickstart file (`kickstart/kickstart.json`) has been updated to register
 both redirect URIs on the shared FusionAuth application:
 
 ```
-http://localhost:9998/stuff   ← App A (Leg 2 callback)
-http://localhost:9999/stuff   ← App B (Leg 1 callback)
+http://localhost:9998/cme   ← App A (Leg 2 callback)
+http://localhost:9999/proxy   ← App B (Leg 1 callback)
 ```
 
 If FusionAuth was already running before this change, re-run kickstart or
@@ -86,7 +84,7 @@ Visit `http://localhost:9998` and click **Login via consent proxy**.
 3. App A redirects the browser to `http://localhost:9999/authorize` with the
    full OAuth parameter set:
    `client_id`, `response_type`, `scope`, `state`, `code_challenge`,
-   `code_challenge_method`, `redirect_uri=http://localhost:9998/stuff`.
+   `code_challenge_method`, `redirect_uri=http://localhost:9998/cms`.
 4. App B's `GET /authorize` handler:
    - Captures all incoming params as `originalParams`.
    - Generates its own fresh PKCE pair for Leg 1.
@@ -94,11 +92,11 @@ Visit `http://localhost:9998` and click **Login via consent proxy**.
    - Stores `{ originalParams, leg1Verifier }` in an in-memory state store
      keyed by the UUID.
    - Redirects to FusionAuth `/oauth2/authorize` with App B's own
-     `code_challenge`, `redirect_uri=http://localhost:9999/stuff`, and the
+     `code_challenge`, `redirect_uri=http://localhost:9999/proxy`, and the
      UUID as `state`.
 5. User logs in at FusionAuth.
-6. FusionAuth redirects to `http://localhost:9999/stuff?code=…&state=<uuid>`.
-7. App B's `GET /stuff` handler:
+6. FusionAuth redirects to `http://localhost:9999/proxy?code=…&state=<uuid>`.
+7. App B's `GET /proxy` handler:
    - Looks up the stored entry by the UUID state key.
    - Exchanges the Leg 1 code with **App B's own verifier** for a consent
      access token.
@@ -110,12 +108,12 @@ Visit `http://localhost:9998` and click **Login via consent proxy**.
 8. App B redirects the browser back to FusionAuth `/oauth2/authorize` using
    `originalParams`, which includes:
    - `code_challenge` — **App A's original challenge, preserved verbatim**
-   - `redirect_uri=http://localhost:9998/stuff`
+   - `redirect_uri=http://localhost:9998/cms`
    - `state` — App A's original nonce
 9. FusionAuth already has a session from Leg 1, so the login screen is
    skipped. It issues a new authorization code bound to App A's
-   `code_challenge` and redirects to `http://localhost:9998/stuff?code=…`.
-10. App A's `GET /stuff` handler:
+   `code_challenge` and redirects to `http://localhost:9998/cme?code=…`.
+10. App A's `GET /cme` handler:
     - Validates the returned state nonce against its session cookie.
     - Exchanges the code with **App A's original verifier** (retrieved from
       the session cookie). This succeeds because FusionAuth bound the code to
@@ -143,14 +141,14 @@ App B's verifier.
 > `code_challenge` through Leg 2 so FusionAuth can verify it when App A
 > exchanges the code.**
 
-This is implemented in `app-b/src/index.ts` in the `GET /stuff` handler:
+This is implemented in `app-b/src/index.ts` in the `GET /proxy` handler:
 
 ```typescript
 const leg2Params = new URLSearchParams({
   ...
   code_challenge:        originalParams.code_challenge,   // App A's challenge — must be preserved
   code_challenge_method: originalParams.code_challenge_method || 'S256',
-  redirect_uri:          originalParams.redirect_uri,     // :9998/stuff
+  redirect_uri:          originalParams.redirect_uri,     // :9998/cme
   state:                 originalParams.state,            // App A's nonce — must be preserved
   ...
 });
@@ -160,12 +158,12 @@ const leg2Params = new URLSearchParams({
 
 ## Consent logic hook
 
-The consent logic stub is in `app-b/src/index.ts` inside `GET /stuff`,
+The consent logic stub is in `app-b/src/index.ts` inside `GET /proxy`,
 immediately after the Leg 1 token exchange:
 
 ```typescript
 // TODO: replace this stub with real consent UI / storage logic.
-console.log(`[/stuff] Leg 1 consent token obtained. Running consent logic...`);
+console.log(`[/proxy] Leg 1 consent token obtained. Running consent logic...`);
 ```
 
 At this point `consentToken` is a valid FusionAuth access token identifying
@@ -184,11 +182,7 @@ the user. Replace the stub with:
 
 ```json
 "authorizedRedirectURLs": [
-  "http://localhost:8080/oauth-redirect",
-  "http://localhost:9998/stuff",
-  "http://localhost:9999/stuff"
+  "http://localhost:9998/cme",
+  "http://localhost:9999/proxy"
 ]
 ```
-
-The original `http://localhost:8080/oauth-redirect` entry is preserved so
-the existing `complete-application` quickstart continues to work unchanged.

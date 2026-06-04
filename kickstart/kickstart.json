@@ -51,12 +51,12 @@
           "name": "ExampleNodeApp",
           "oauthConfiguration": {
             "authorizedRedirectURLs": [
-              "http://localhost:8080/oauth-redirect",
-              "http://localhost:9998/stuff",
-              "http://localhost:9999/stuff"
+              "http://localhost:9998/cme",
+              "http://localhost:9999/proxy"
             ],
-            "logoutURL": "http://localhost:8080/oauth2/logout",
+            "clientAuthenticationPolicy": "NotRequiredWhenUsingPKCE",
             "clientSecret": "#{clientSecret}",
+            "proofKeyForCodeExchangePolicy": "Required",
             "enabledGrants": [
               "authorization_code",
               "refresh_token"
