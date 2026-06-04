@@ -62,7 +62,7 @@
               "refresh_token"
             ],
             "generateRefreshTokens": true,
-            "requireRegistration": true
+            "requireRegistration": false
           },
           "jwtConfiguration": {
             "enabled": true,
