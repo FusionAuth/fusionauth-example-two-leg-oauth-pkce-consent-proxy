@@ -2,6 +2,7 @@ import FusionAuthClient from '@fusionauth/typescript-client';
 import express from 'express';
 import pkceChallenge from 'pkce-challenge';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { decode } from 'jsonwebtoken';
 
 import * as dotenv from 'dotenv';
 dotenv.config();
@@ -10,17 +11,18 @@ dotenv.config();
 // Config
 // ---------------------------------------------------------------------------
 
-for (const key of ['clientId', 'clientSecret', 'fusionAuthURL', 'stateSecret']) {
+for (const key of ['clientId', 'clientSecret', 'fusionAuthURL', 'fusionAuthAPIKey', 'stateSecret']) {
   if (!process.env[key]) {
     console.error(`Missing ${key} from .env`);
     process.exit(1);
   }
 }
 
-const clientId      = process.env.clientId!;
-const clientSecret  = process.env.clientSecret!;
-const fusionAuthURL = process.env.fusionAuthURL!;
-const stateSecret   = process.env.stateSecret!;
+const clientId        = process.env.clientId!;
+const clientSecret    = process.env.clientSecret!;
+const fusionAuthURL   = process.env.fusionAuthURL!;
+const fusionAuthAPIKey = process.env.fusionAuthAPIKey!;
+const stateSecret     = process.env.stateSecret!;
 
 // The redirect_uri registered for Leg 1 — FusionAuth returns the browser here
 // after the user authenticates during the consent leg.
@@ -79,7 +81,7 @@ function decodeState(state: string): StatePayload | null {
 
 const app = express();
 
-const faClient = new FusionAuthClient('noapikeyneeded', fusionAuthURL);
+const faClient = new FusionAuthClient(fusionAuthAPIKey, fusionAuthURL);
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -174,21 +176,37 @@ app.get('/proxy', async (req, res) => {
   }
 
   // -------------------------------------------------------------------------
-  // Consent logic goes here.
+  // Consent logic: ensure the user is registered for the application.
   //
-  // TODO: create a registration for the user using the FusionAuth API
-  //
-  // With consentToken you can:
-  //   - Decode the JWT to identify the user
-  //   - Look up existing consent records
-  //   - Show a consent UI page (and wait for a POST before proceeding)
-  //   - Record the consent decision
-  //
-  // For this POC we log the token and proceed immediately.
+  // Decode the consent token to get the user's ID (sub claim), then check
+  // whether a registration exists. If not, create one so the user can
+  // receive an access token scoped to this application in Leg 2.
   // -------------------------------------------------------------------------
-  console.log(`[/proxy] Leg 1 consent token obtained. Running consent logic...`);
-  console.log(`[/proxy] User identified from consent token (decode JWT to get sub/email).`);
-  // TODO: replace this stub with real consent UI / storage logic.
+  const decoded = decode(consentToken) as { sub?: string } | null;
+  const userId = decoded?.sub;
+
+  if (!userId) {
+    console.error('[/proxy] Could not extract sub from consent token');
+    return res.status(500).send('Internal error: could not identify user from consent token');
+  }
+
+  try {
+    await faClient.retrieveRegistration(userId, clientId);
+    console.log(`[/proxy] User ${userId} is already registered for application ${clientId}`);
+  } catch (err: any) {
+    if (err?.statusCode === 404) {
+      console.log(`[/proxy] User ${userId} is not registered — creating registration for application ${clientId}`);
+      await faClient.register(userId, {
+        registration: {
+          applicationId: clientId,
+        },
+      });
+      console.log(`[/proxy] Registration created for user ${userId}`);
+    } else {
+      console.error('[/proxy] Error checking registration:', err);
+      return res.status(500).json({ error: 'Failed to verify or create registration', detail: String(err) });
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Leg 2: re-initiate the authorize flow with App A's original params.
